@@ -1,0 +1,273 @@
+<?xml version="1.0"?>
+<!-- model.urdf - visualization + minimal inertials & collisions -->
+<robot name="rehab_robot">
+
+  <!-- MAIN BODY -->
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="8.0"/>
+      <inertia ixx="0.15" ixy="0.0" ixz="0.0" iyy="0.30" iyz="0.0" izz="0.20"/>
+    </inertial>
+
+    <visual>
+      <geometry>
+        <box size="0.4 0.7 0.3"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 1"/>
+      <material name="red">
+        <color rgba="1 0 0 1"/>
+      </material>
+    </visual>
+
+    <collision>
+      <geometry>
+        <box size="0.4 0.7 0.3"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 1"/>
+    </collision>
+  </link>
+
+  <!-- RIGHT LEG CHAIN -->
+  <joint name="right_hip_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="right_thigh"/>
+    <origin rpy="0 0 0" xyz="0 -0.25 0.85"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="200" velocity="1.5" lower="-1.57" upper="1.57"/>
+  </joint>
+
+  <link name="right_thigh">
+    <inertial>
+      <origin xyz="0 0 -0.225" rpy="0 0 0"/>
+      <mass value="1.2"/>
+      <inertia ixx="0.005" ixy="0.0" ixz="0.0" iyy="0.010" iyz="0.0" izz="0.010"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder length="0.45" radius="0.06"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 -0.225"/>
+      <material name="black"><color rgba="0 0 0 1"/></material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.45" radius="0.06"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 -0.225"/>
+    </collision>
+  </link>
+
+  <joint name="right_knee_joint" type="revolute">
+    <parent link="right_thigh"/>
+    <child link="right_leg"/>
+    <origin rpy="0 0 0" xyz="0 0 -0.45"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="200" velocity="2.0" lower="-0.1" upper="2.0"/>
+  </joint>
+
+  <link name="right_leg">
+    <inertial>
+      <origin xyz="0 0 -0.225" rpy="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.005" ixy="0.0" ixz="0.0" iyy="0.010" iyz="0.0" izz="0.010"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder length="0.45" radius="0.06"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 -0.225"/>
+      <material name="white"><color rgba="1 1 1 1"/></material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.45" radius="0.06"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 -0.225"/>
+    </collision>
+  </link>
+
+  <joint name="right_ankle_joint" type="revolute">
+    <parent link="right_leg"/>
+    <child link="right_foot"/>
+    <origin rpy="0 0 0" xyz="0 0 -0.45"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="100" velocity="2.0" lower="-0.5" upper="0.5"/>
+  </joint>
+
+  <link name="right_foot">
+    <inertial>
+      <origin xyz="0 0 -0.018" rpy="0 0 0"/>
+      <mass value="0.2"/>
+      <inertia ixx="0.0002" ixy="0.0" ixz="0.0" iyy="0.0002" iyz="0.0" izz="0.0001"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder length="0.05" radius="0.10"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 -0.018"/>
+      <material name="lavender"><color rgba="0.7 0.5 0.9 1"/></material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.05" radius="0.10"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 -0.018"/>
+    </collision>
+  </link>
+
+  <!-- LEFT LEG CHAIN (mirror) -->
+  <joint name="left_hip_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="left_thigh"/>
+    <origin rpy="0 0 0" xyz="0 0.25 0.85"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="200" velocity="1.5" lower="-1.57" upper="1.57"/>
+  </joint>
+
+  <link name="left_thigh">
+    <inertial>
+      <origin xyz="0 0 -0.225" rpy="0 0 0"/>
+      <mass value="1.2"/>
+      <inertia ixx="0.005" ixy="0.0" ixz="0.0" iyy="0.010" iyz="0.0" izz="0.010"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder length="0.45" radius="0.06"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 -0.225"/>
+      <material name="black"><color rgba="0 0 0 1"/></material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.45" radius="0.06"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 -0.225"/>
+    </collision>
+  </link>
+
+  <joint name="left_knee_joint" type="revolute">
+    <parent link="left_thigh"/>
+    <child link="left_leg"/>
+    <origin rpy="0 0 0" xyz="0 0 -0.45"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="200" velocity="2.0" lower="-0.1" upper="2.0"/>
+  </joint>
+
+  <link name="left_leg">
+    <inertial>
+      <origin xyz="0 0 -0.225" rpy="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.005" ixy="0.0" ixz="0.0" iyy="0.010" iyz="0.0" izz="0.010"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder length="0.45" radius="0.06"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 -0.225"/>
+      <material name="white"><color rgba="1 1 1 1"/></material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.45" radius="0.06"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 -0.225"/>
+    </collision>
+  </link>
+
+  <joint name="left_ankle_joint" type="revolute">
+    <parent link="left_leg"/>
+    <child link="left_foot"/>
+    <origin rpy="0 0 0" xyz="0 0 -0.45"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="100" velocity="2.0" lower="-0.5" upper="0.5"/>
+  </joint>
+
+  <link name="left_foot">
+    <inertial>
+      <origin xyz="0 0 -0.018" rpy="0 0 0"/>
+      <mass value="0.2"/>
+      <inertia ixx="0.0002" ixy="0.0" ixz="0.0" iyy="0.0002" iyz="0.0" izz="0.0001"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder length="0.05" radius="0.10"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 -0.018"/>
+      <material name="lavender"><color rgba="0.7 0.5 0.9 1"/></material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.05" radius="0.10"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 -0.018"/>
+    </collision>
+  </link>
+
+
+
+  <!-- ===== ros2_control section: registers joint interfaces  ===== -->
+  <ros2_control name="RobotController" type="system">
+    <hardware>
+      <plugin>mock_components/GenericSystem</plugin>
+      <param name="calculate_dynamics">false</param>
+      <param name="custom_interface_with_following_offset"></param>
+      <param name="disable_commands">false</param>
+      <param name="mock_gpio_commands">false</param>
+      <param name="mock_sensor_commands">false</param>
+      <param name="position_state_following_offset">0.0</param>
+    </hardware>
+
+    <!-- list each joint we want to control; give command interface 'position' -->
+    <joint name="right_hip_joint">
+      <command_interface name="position">
+        <param name="min">-1.57</param>
+        <param name="max">1.57</param>
+      </command_interface>
+      <state_interface name="position"/>
+    </joint>
+
+    <joint name="right_knee_joint">
+      <command_interface name="position">
+        <param name="min">-0.1</param>
+        <param name="max">2.0</param>
+      </command_interface>
+      <state_interface name="position"/>
+    </joint>
+
+    <joint name="right_ankle_joint">
+      <command_interface name="position">
+        <param name="min">-0.5</param>
+        <param name="max">0.5</param>
+      </command_interface>
+      <state_interface name="position"/>
+    </joint>
+
+    <joint name="left_hip_joint">
+      <command_interface name="position">
+        <param name="min">-1.57</param>
+        <param name="max">1.57</param>
+      </command_interface>
+      <state_interface name="position"/>
+    </joint>
+
+    <joint name="left_knee_joint">
+      <command_interface name="position">
+        <param name="min">-0.1</param>
+        <param name="max">2.0</param>
+      </command_interface>
+      <state_interface name="position"/>
+    </joint>
+
+    <joint name="left_ankle_joint">
+      <command_interface name="position">
+        <param name="min">-0.5</param>
+        <param name="max">0.5</param>
+      </command_interface>
+      <state_interface name="position"/>
+    </joint>
+
+  </ros2_control>
+
+</robot>
+

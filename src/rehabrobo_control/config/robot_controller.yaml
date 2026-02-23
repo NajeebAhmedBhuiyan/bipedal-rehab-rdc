@@ -1,0 +1,21 @@
+# robot_controller.yaml
+controller_manager:
+  ros__parameters:
+    update_rate: 10 # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    forward_position_controller:
+      type: forward_command_controller/ForwardCommandController
+
+forward_position_controller:
+  ros__parameters:
+    joints:
+      - right_hip_joint
+      - right_knee_joint
+      - right_ankle_joint
+      - left_hip_joint
+      - left_knee_joint
+      - left_ankle_joint
+    interface_name: position

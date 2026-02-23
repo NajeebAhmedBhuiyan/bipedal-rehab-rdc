@@ -1,0 +1,39 @@
+# ── ROS2 build artifacts ───────────────────────────────
+build/
+install/
+log/
+
+# ── ML data and model weights (too large for git) ──────
+*.csv
+*.pt
+*.pth
+*.pkl
+*.npy
+*.h5
+*.hdf5
+
+# ── Logs ───────────────────────────────────────────────
+*.log
+rehabrobo_logs/
+
+# ── Python ─────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv
+env/
+venv/
+
+# ── VS Code ────────────────────────────────────────────
+.vscode/
+*.code-workspace
+
+# ── OS artifacts ───────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Jupyter / Colab (keep .ipynb but ignore checkpoints)
+.ipynb_checkpoints/
