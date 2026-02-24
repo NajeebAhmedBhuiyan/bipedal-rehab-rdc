@@ -22,7 +22,9 @@ install(PROGRAMS
   scripts/disturbance_injector.py
   scripts/error_monitor.py
   scripts/command_mixer.py
-  scripts/ml_data_collector.py      
+  scripts/ml_data_collector.py
+  scripts/residual_dynamics_compensator.py  
+  scripts/live_plotter.py        
   DESTINATION lib/${PROJECT_NAME}
 )
 
