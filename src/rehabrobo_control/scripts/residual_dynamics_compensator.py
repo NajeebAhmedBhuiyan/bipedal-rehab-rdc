@@ -1,12 +1,18 @@
 #!/home/nabq/miniconda3/envs/rdenv/bin/python3
 """
-residual_dynamics_compensator.py — Phase 3 Fixed: With Scale + EMA Smoothing
+residual_dynamics_compensator.py — Phase 3 v2: Window Size 30
 
-Two key fixes over previous version:
-  1. compensation_scale — multiplies raw LSTM output before publishing
-                          prevents over-compensation (start at 0.3, tune up)
-  2. ema_alpha          — exponential moving average smoothing on output
-                          reduces high-frequency jumps between timesteps
+KEY CHANGE: window_size increased from 10 → 30 steps (1.5 seconds of history)
+            input_dim increased from 67 → 187 to match new training data
+
+Feature vector (187 values):
+  6   nominal commands
+  180 error window (30 steps × 6 joints)
+  1   gait phase
+  ──────────────────
+  187 total
+
+Must be used with model trained on window_size=30 data (ml_data_collector_v2).
 
 Subscribes to:
   /joint_tracking_error   — 6 joint errors (from error_monitor)
@@ -20,18 +26,11 @@ ROS2 Parameters:
   scaler_x_path      : str   — path to scaler_X.pkl
   scaler_y_path      : str   — path to scaler_y.pkl
   enabled            : bool  — master on/off switch   (default: True)
-  window_size        : int   — must match training     (default: 10)
+  window_size        : int   — must match training     (default: 30)
   gait_frequency     : float — must match walking_pub  (default: 0.25)
-  compensation_scale : float — output scale factor     (default: 0.3)
-                               tune this up from 0.3 toward 1.0 gradually
-  ema_alpha          : float — EMA smoothing factor    (default: 0.3)
-                               0.0 = frozen, 1.0 = no smoothing
-
-Runtime tuning:
-  ros2 param set /residual_dynamics_compensator compensation_scale 0.3
-  ros2 param set /residual_dynamics_compensator compensation_scale 0.5
-  ros2 param set /residual_dynamics_compensator compensation_scale 0.7
-  ros2 param set /residual_dynamics_compensator ema_alpha 0.3
+  compensation_scale : float — output scale factor     (default: 1.0)
+  ema_alpha          : float — EMA smoothing factor    (default: 0.5)
+                               0.3 = smooth, 0.8 = responsive
 """
 
 import rclpy
@@ -46,11 +45,15 @@ import math
 from collections import deque
 
 
-# ── LSTM Model Definition (must match training exactly) ───────────────────────
+# ── LSTM Model Definition — must match training exactly ───────────────────────
 
 class LSTMResidualCompensator(nn.Module):
-    def __init__(self, input_dim=67, hidden_dim=128,
-                 num_layers=2, output_dim=6, dropout=0.2):
+    def __init__(self,
+                 input_dim=187,    # ← 6 + 180 + 1 (window_size=30)
+                 hidden_dim=128,
+                 num_layers=2,
+                 output_dim=6,
+                 dropout=0.2):
         super().__init__()
         self.input_proj = nn.Sequential(
             nn.Linear(input_dim, 64),
@@ -98,10 +101,10 @@ class RDCNode(Node):
         self.declare_parameter('scaler_y_path',
             '/home/nabq/rehabrobo_logs/MODELS-n-FIGS/scaler_y.pkl')
         self.declare_parameter('enabled',             True)
-        self.declare_parameter('window_size',         10)
+        self.declare_parameter('window_size',         30)    # ← changed from 10
         self.declare_parameter('gait_frequency',      0.25)
-        self.declare_parameter('compensation_scale',  0.3)   # ← KEY: start conservative
-        self.declare_parameter('ema_alpha',           0.3)   # ← KEY: smoothing
+        self.declare_parameter('compensation_scale',  1.0)   # no scaling needed
+        self.declare_parameter('ema_alpha',           0.5)   # balanced smoothing
 
         model_path    = self.get_parameter('model_path').get_parameter_value().string_value
         scaler_x_path = self.get_parameter('scaler_x_path').get_parameter_value().string_value
@@ -109,14 +112,18 @@ class RDCNode(Node):
         self.window_size = self.get_parameter('window_size').get_parameter_value().integer_value
         self.gait_freq   = self.get_parameter('gait_frequency').get_parameter_value().double_value
 
+        # Feature dim: 6 nominal + (window_size × 6) + 1 phase
+        self.feature_dim = 6 + (self.window_size * NUM_JOINTS) + 1
+
         # ── Load model ────────────────────────────────────────────────────────
         self.device = torch.device('cpu')
-        self.model  = LSTMResidualCompensator().to(self.device)
+        self.model  = LSTMResidualCompensator(input_dim=self.feature_dim).to(self.device)
         self.model.load_state_dict(
             torch.load(model_path, map_location=self.device)
         )
         self.model.eval()
         self.get_logger().info(f'LSTM model loaded: {model_path}')
+        self.get_logger().info(f'Input dim: {self.feature_dim} (window_size={self.window_size})')
 
         # ── Load scalers ──────────────────────────────────────────────────────
         with open(scaler_x_path, 'rb') as f:
@@ -131,11 +138,11 @@ class RDCNode(Node):
             maxlen=self.window_size
         )
         self.nominal    = [0.0] * NUM_JOINTS
-        self.ema_output = [0.0] * NUM_JOINTS   # EMA state
+        self.ema_output = [0.0] * NUM_JOINTS
 
-        self.start_time  = None
-        self.error_received   = False
-        self.nominal_received = False
+        self.start_time         = None
+        self.error_received     = False
+        self.nominal_received   = False
         self._last_status_print = -1.0
         self._inference_count   = 0
 
@@ -157,10 +164,13 @@ class RDCNode(Node):
         self.timer = self.create_timer(0.05, self.infer_callback)
 
         self.get_logger().info(
-            'RDC Node ready.\n'
-            '  compensation_scale = 0.3  (tune up gradually with ros2 param set)\n'
-            '  ema_alpha          = 0.3  (smoothing factor)\n'
-            '  Waiting for topics...'
+            f'RDC Node v2 ready.\n'
+            f'  window_size        = {self.window_size} steps '
+            f'({self.window_size * 0.05:.1f}s history)\n'
+            f'  feature_dim        = {self.feature_dim}\n'
+            f'  compensation_scale = 1.0\n'
+            f'  ema_alpha          = 0.5\n'
+            f'  Waiting for topics...'
         )
 
     def error_callback(self, msg):
@@ -190,11 +200,7 @@ class RDCNode(Node):
         now = self.get_clock().now().nanoseconds / 1e9
         if self.start_time is None:
             self.start_time = now
-            self.get_logger().info(
-                f'RDC inference started ✓\n'
-                f'  compensation_scale = {scale:.2f}\n'
-                f'  ema_alpha          = {alpha:.2f}'
-            )
+            self.get_logger().info('RDC inference started ✓')
 
         t = now - self.start_time
 
@@ -202,16 +208,18 @@ class RDCNode(Node):
             msg = Float64MultiArray()
             msg.data = [0.0] * NUM_JOINTS
             self.pub_rdc.publish(msg)
-            self.ema_output = [0.0] * NUM_JOINTS  # reset EMA when disabled
+            self.ema_output = [0.0] * NUM_JOINTS
             return
 
-        # ── Build feature vector (67 values) ──────────────────────────────────
+        # ── Build feature vector (187 values) ─────────────────────────────────
         nominal_feat = self.nominal[:]
-        window_flat  = []
+
+        window_flat = []
         for past_errors in self.error_window:
             window_flat.extend(past_errors)
+
         gait_phase = (2 * math.pi * self.gait_freq * t) % (2 * math.pi)
-        features   = nominal_feat + window_flat + [gait_phase]
+        features   = nominal_feat + window_flat + [gait_phase]  # 187 values
 
         # ── Normalize ─────────────────────────────────────────────────────────
         features_np     = np.array(features, dtype=np.float32).reshape(1, -1)
@@ -225,10 +233,10 @@ class RDCNode(Node):
         # ── Inverse transform ─────────────────────────────────────────────────
         raw_compensation = self.scaler_y.inverse_transform(pred_scaled)[0].tolist()
 
-        # ── Scale down to prevent over-compensation ───────────────────────────
+        # ── Scale ─────────────────────────────────────────────────────────────
         scaled_compensation = [v * scale for v in raw_compensation]
 
-        # ── EMA smoothing to reduce high-frequency jumps ──────────────────────
+        # ── EMA smoothing ─────────────────────────────────────────────────────
         smoothed = []
         for i in range(NUM_JOINTS):
             ema_val = alpha * scaled_compensation[i] + (1.0 - alpha) * self.ema_output[i]
@@ -245,15 +253,13 @@ class RDCNode(Node):
         # ── Status print every 10 seconds ─────────────────────────────────────
         if (t - self._last_status_print) >= 10.0:
             self._last_status_print = t
-            scale_now = self.get_parameter('compensation_scale').get_parameter_value().double_value
             self.get_logger().info(
-                f'\n  ── RDC Status @ t={t:.1f}s | '
-                f'scale={scale_now:.2f} | '
+                f'\n  ── RDC v2 @ t={t:.1f}s | '
+                f'scale={scale:.2f} | alpha={alpha:.2f} | '
                 f'Inferences: {self._inference_count} ──\n' +
                 '\n'.join([
                     f'  {JOINT_NAMES[i]:<22}: '
                     f'raw={raw_compensation[i]:>+.4f}  '
-                    f'scaled={scaled_compensation[i]:>+.4f}  '
                     f'smoothed={smoothed[i]:>+.4f}'
                     for i in range(NUM_JOINTS)
                 ])
