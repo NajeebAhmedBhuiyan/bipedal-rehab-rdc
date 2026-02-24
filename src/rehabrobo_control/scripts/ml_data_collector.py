@@ -1,50 +1,36 @@
 #!/usr/bin/env python3
 """
-ml_data_collector.py — Phase 2 Fixed: ML Training Data Collector
+ml_data_collector.py — Phase 3 v2: Window Size 30
 
-KEY FIX: Now subscribes to /disturbed_commands instead of /joint_states
-for computing joint errors. This ensures training data matches deployment
-exactly — no distribution shift between training and live inference.
+KEY CHANGE: window_size increased from 10 → 30 steps (1.5 seconds of history)
+This gives the LSTM enough context to determine the phase of a spasticity
+burst, which lasts ~1.5 seconds. Previously at 10 steps (0.5s), the model
+could not see a full burst cycle and was guessing phase incorrectly.
 
-Error computation:
-  error = /nominal_commands - /disturbed_commands
-        = nominal - (nominal + disturbance)
-        = -disturbance
+Feature vector is now 187 values (was 67):
+  6  nominal commands
+  180 error window (30 steps × 6 joints)
+  1  gait phase
+  ─────────────────
+  187 total
 
-This is identical to what error_monitor.py computes in live deployment.
+Output labels unchanged: 6 compensation values
+
+Error computation (unchanged from v1):
+  error = /nominal_commands - /disturbed_commands = -disturbance
 
 Subscribes to:
-  /nominal_commands       — desired joint positions (input feature)
-  /disturbed_commands     — nominal + disturbance   (to compute error)
-  /disturbance            — raw disturbance signal  (training LABEL)
-
-Records per timestep:
-  INPUT FEATURES (67):
-  ├── nominal_commands[t]     — 6 values
-  ├── joint_errors[t..t-9]   — sliding window of 10 steps × 6 joints = 60
-  └── gait_phase[t]           — 1 value (0 to 2π)
-
-  OUTPUT LABEL (6):
-  └── compensation[t]         — -disturbance[t] per joint
-
-  DIAGNOSTICS (13):
-  ├── disturbed_positions[t]  — 6 values
-  ├── disturbance[t]          — 6 raw values
-  └── rmse[t]                 — 1 value
+  /nominal_commands       — desired joint positions
+  /disturbed_commands     — nominal + disturbance (clean error signal)
+  /disturbance            — raw disturbance (training label)
 
 ROS2 Parameters:
   session_label    : str   — label for CSV filename     (default: 'session')
   disturbance_type : str   — logged as metadata         (default: 'spasticity')
   magnitude        : float — logged as metadata         (default: 0.15)
   log_dir          : str   — output folder              (default: ~/rehabrobo_logs/ml_data)
-  window_size      : int   — number of past error steps (default: 10)
+  window_size      : int   — number of past error steps (default: 30)
   gait_frequency   : float — must match walking_publisher (default: 0.25 Hz)
-
-Usage:
-  ros2 run rehabrobo_control ml_data_collector.py --ros-args \
-    -p session_label:=spasticity_mag015 \
-    -p disturbance_type:=spasticity \
-    -p magnitude:=0.15
 """
 
 import rclpy
@@ -68,7 +54,7 @@ JOINT_NAMES = [
 ]
 
 NUM_JOINTS  = len(JOINT_NAMES)
-WINDOW_SIZE = 10
+WINDOW_SIZE = 30   # ← increased from 10
 
 
 class MLDataCollector(Node):
@@ -90,6 +76,10 @@ class MLDataCollector(Node):
         self.window_size = self.get_parameter('window_size').get_parameter_value().integer_value
         self.gait_freq   = self.get_parameter('gait_frequency').get_parameter_value().double_value
 
+        # Feature dim = 6 nominal + (window_size × 6 errors) + 1 phase
+        self.feature_dim = 6 + (self.window_size * NUM_JOINTS) + 1
+        # e.g. window_size=30 → 6 + 180 + 1 = 187
+
         # ── CSV setup ─────────────────────────────────────────────────────────
         os.makedirs(log_dir, exist_ok=True)
         ts       = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -102,11 +92,11 @@ class MLDataCollector(Node):
 
         # ── Internal state ────────────────────────────────────────────────────
         self.nominal     = [0.0] * NUM_JOINTS
-        self.disturbed   = [0.0] * NUM_JOINTS   # ← was self.actual from /joint_states
+        self.disturbed   = [0.0] * NUM_JOINTS
         self.disturbance = [0.0] * NUM_JOINTS
 
         self.nominal_received     = False
-        self.disturbed_received   = False        # ← was actual_received
+        self.disturbed_received   = False
         self.disturbance_received = False
 
         self.error_window = deque(
@@ -114,8 +104,8 @@ class MLDataCollector(Node):
             maxlen=self.window_size
         )
 
-        self.start_time = None
-        self.row_count  = 0
+        self.start_time  = None
+        self.row_count   = 0
         self._last_print = -1.0
 
         # ── Subscribers ───────────────────────────────────────────────────────
@@ -123,7 +113,6 @@ class MLDataCollector(Node):
             Float64MultiArray, '/nominal_commands',
             self.nominal_callback, 10
         )
-        # KEY FIX: subscribe to /disturbed_commands instead of /joint_states
         self.sub_disturbed = self.create_subscription(
             Float64MultiArray, '/disturbed_commands',
             self.disturbed_callback, 10
@@ -135,21 +124,21 @@ class MLDataCollector(Node):
 
         self.timer = self.create_timer(0.05, self.collect_callback)
 
-        self.get_logger().info('=' * 55)
-        self.get_logger().info('  ML Data Collector (Fixed) started')
+        self.get_logger().info('=' * 60)
+        self.get_logger().info('  ML Data Collector v2 (window_size=30)')
         self.get_logger().info(f'  Session      : {session_label}')
         self.get_logger().info(f'  Disturbance  : {disturbance_type} @ {magnitude:.2f} rad')
-        self.get_logger().info(f'  Window size  : {self.window_size} steps')
+        self.get_logger().info(f'  Window size  : {self.window_size} steps ({self.window_size*0.05:.1f}s history)')
+        self.get_logger().info(f'  Feature dim  : {self.feature_dim} (was 67)')
         self.get_logger().info(f'  Output CSV   : {self.csv_path}')
-        self.get_logger().info(f'  Error source : /disturbed_commands (FIXED)')
-        self.get_logger().info('=' * 55)
+        self.get_logger().info('=' * 60)
         self.get_logger().info('Waiting for all 3 topics...')
 
     # ──────────────────────────────────────────────────────────────────────────
     # Subscribers
     # ──────────────────────────────────────────────────────────────────────────
 
-    def nominal_callback(self, msg: Float64MultiArray):
+    def nominal_callback(self, msg):
         if len(msg.data) != NUM_JOINTS:
             return
         self.nominal = list(msg.data)
@@ -158,7 +147,7 @@ class MLDataCollector(Node):
             self.get_logger().info('  /nominal_commands      ✓')
             self._check_all_ready()
 
-    def disturbed_callback(self, msg: Float64MultiArray):
+    def disturbed_callback(self, msg):
         if len(msg.data) != NUM_JOINTS:
             return
         self.disturbed = list(msg.data)
@@ -167,7 +156,7 @@ class MLDataCollector(Node):
             self.get_logger().info('  /disturbed_commands    ✓')
             self._check_all_ready()
 
-    def disturbance_callback(self, msg: Float64MultiArray):
+    def disturbance_callback(self, msg):
         if len(msg.data) != NUM_JOINTS:
             return
         self.disturbance = list(msg.data)
@@ -183,7 +172,7 @@ class MLDataCollector(Node):
             self.get_logger().info('All topics live — RECORDING STARTED ✓')
 
     # ──────────────────────────────────────────────────────────────────────────
-    # Main collection callback
+    # Main collection callback (20 Hz)
     # ──────────────────────────────────────────────────────────────────────────
 
     def collect_callback(self):
@@ -198,34 +187,33 @@ class MLDataCollector(Node):
 
         t = now - self.start_time
 
-        # ── Compute error (matches deployment exactly) ─────────────────────────
-        # error = nominal - disturbed = -(disturbance)
+        # ── Compute error ──────────────────────────────────────────────────────
         errors = [self.nominal[i] - self.disturbed[i] for i in range(NUM_JOINTS)]
         rmse   = math.sqrt(sum(e ** 2 for e in errors) / NUM_JOINTS)
 
         # ── Gait phase ─────────────────────────────────────────────────────────
         gait_phase = (2 * math.pi * self.gait_freq * t) % (2 * math.pi)
 
-        # ── Training label: compensation = -disturbance ────────────────────────
+        # ── Training label ─────────────────────────────────────────────────────
         compensation = [-d for d in self.disturbance]
 
-        # ── Build window feature (oldest first) ────────────────────────────────
+        # ── Build window features (oldest first) ───────────────────────────────
         window_flat = []
         for past_errors in self.error_window:
             window_flat.extend(past_errors)
 
-        # ── Update window with current error ───────────────────────────────────
+        # ── Update window ──────────────────────────────────────────────────────
         self.error_window.append(errors[:])
 
         # ── Write CSV row ──────────────────────────────────────────────────────
         row = [f'{t:.4f}']
-        row += [f'{v:.6f}' for v in self.nominal]      # nominal_commands[t]  — 6
-        row += [f'{v:.6f}' for v in window_flat]        # error window          — 60
-        row.append(f'{gait_phase:.6f}')                 # gait_phase[t]         — 1
-        row += [f'{v:.6f}' for v in compensation]       # compensation[t]       — 6
-        row += [f'{v:.6f}' for v in self.disturbed]     # disturbed positions   — 6
-        row += [f'{v:.6f}' for v in self.disturbance]   # raw disturbance       — 6
-        row.append(f'{rmse:.6f}')                       # rmse                  — 1
+        row += [f'{v:.6f}' for v in self.nominal]      # 6
+        row += [f'{v:.6f}' for v in window_flat]        # window_size × 6
+        row.append(f'{gait_phase:.6f}')                 # 1
+        row += [f'{v:.6f}' for v in compensation]       # 6 labels
+        row += [f'{v:.6f}' for v in self.disturbed]     # 6 diagnostics
+        row += [f'{v:.6f}' for v in self.disturbance]   # 6 diagnostics
+        row.append(f'{rmse:.6f}')                       # 1 diagnostic
 
         self.csv_writer.writerow(row)
         self.row_count += 1
@@ -264,18 +252,23 @@ class MLDataCollector(Node):
     def _write_header(self):
         header = ['time_sec']
 
+        # Nominal commands (6)
         for n in JOINT_NAMES:
             header.append(f'nominal_{n}')
 
+        # Error window (window_size × 6)
         for step in range(self.window_size - 1, -1, -1):
             for n in JOINT_NAMES:
                 header.append(f'error_{n}_tminus{step}')
 
+        # Gait phase (1)
         header.append('gait_phase')
 
+        # Compensation labels (6)
         for n in JOINT_NAMES:
             header.append(f'compensation_{n}')
 
+        # Diagnostics (13)
         for n in JOINT_NAMES:
             header.append(f'disturbed_{n}')
         for n in JOINT_NAMES:
@@ -284,8 +277,10 @@ class MLDataCollector(Node):
 
         self.csv_writer.writerow(header)
 
+        total_cols = 1 + 6 + (self.window_size * NUM_JOINTS) + 1 + 6 + 6 + 6 + 1
         self.get_logger().info(
-            f'CSV: 1 time + 67 inputs + 6 labels + 13 diagnostics = 87 columns'
+            f'CSV header: 1 time + {self.feature_dim} features + '
+            f'6 labels + 13 diagnostics = {total_cols} columns'
         )
 
     # ──────────────────────────────────────────────────────────────────────────
