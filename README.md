@@ -1,4 +1,4 @@
-# Residual Dynamics Compensator (RDC) for Bipedal Rehabilitation Robot
+# Residual Dynamics Compensator (RDC) for Bipedal Rehabilitation Robot in ROS2 Jazzy
 
 A ROS2-based real-time disturbance compensation system for a 6-DOF bipedal rehabilitation robot. All motion is simulated: the robot model is visualized in RViz and controlled via `ros2_control` with mock hardware components. No physical robot is required.
 
