@@ -1,6 +1,6 @@
 # Residual Dynamics Compensator (RDC) for Bipedal Rehabilitation Robot
 
-A ROS2-based real-time disturbance compensation system for a 6-DOF bipedal rehabilitation exoskeleton. All motion is simulated: the robot model is visualized in RViz and controlled via `ros2_control` with mock hardware components. No physical robot is required.
+A ROS2-based real-time disturbance compensation system for a 6-DOF bipedal rehabilitation robot. All motion is simulated: the robot model is visualized in RViz and controlled via `ros2_control` with mock hardware components. No physical robot is required.
 
 The system learns to predict and cancel virtual involuntary patient disturbances (spasticity, muscle bias, fatigue) using an LSTM neural network, publishing corrective joint commands at 20 Hz alongside the nominal gait trajectory.
 
@@ -37,7 +37,7 @@ Three disturbance types are supported:
 ### Robot Model in RViz
 
 <!-- Add your RViz snapshot here -->
-![RViz Model](docs/images/rviz_model.png)
+![RViz Model](docs/images/rviz_model.gif)
 
 ### Stage 1 — Clean Baseline (disturbance off, RDC off)
 
