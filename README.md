@@ -1,8 +1,8 @@
 # Residual Dynamics Compensator (RDC) for Bipedal Rehabilitation Robot in ROS2 Jazzy
 
-A ROS2-based real-time disturbance compensation system for a 6-DOF bipedal rehabilitation robot. All motion is simulated: the robot model is visualized in RViz and controlled via `ros2_control` with mock hardware components. No physical robot is required.
+A ROS2-based real-time disturbance compensation system for a 6-DOF bipedal rehabilitation robot. All motion is simulated: the robot model is visualized in RViz and controlled via `ros2_control` with mock hardware components. No physical robot is required. 
 
-The system learns to predict and cancel virtual involuntary patient disturbances (spasticity, muscle bias, fatigue) using an LSTM neural network, publishing corrective joint commands at 20 Hz alongside the nominal gait trajectory.
+The system learns to predict and cancel virtual involuntary patient disturbances (spasticity, muscle bias, fatigue) using an LSTM neural network, publishing corrective joint commands at 20 Hz alongside the nominal gait trajectory. See this [LinkedIn post](https://www.linkedin.com/posts/najeeb-ahmed-bhuiyan-456048221_robotics-ros2-rviz-activity-7432427704093798400-MySu?utm_source=social_share_send&utm_medium=member_desktop_web&rcm=ACoAADe2jIIBNAwFxu-ANLvx_myszeAQmkkef1g) for a better understanding of this work!                   
 
 To only get the Sinusoidal Feedforward Gait Generator, kindly visit: https://github.com/NajeebAhmedBhuiyan/Bipedal-Rehab-Robot
 
